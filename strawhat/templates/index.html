@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>草帽模型财务规划工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        h2 {
+            color: #3498db;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .col-md-6 {
+            flex: 0 0 50%;
+            max-width: 50%;
+            padding: 0 15px;
+        }
+        .col-md-12 {
+            flex: 0 0 100%;
+            max-width: 100%;
+            padding: 0 15px;
+        }
+        #strawhatForm, #additionalOperations {
+            margin-bottom: 20px;
+        }
+        input[type="number"], select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #3498db;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button[type="submit"] {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 30px;
+            font-size: 18px;
+        }
+        #result {
+            margin-bottom: 20px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 18px;
+            color: #2c3e50;
+        }
+        #chart {
+            margin-bottom: 20px;
+            max-width: 100%;
+            height: auto;
+        }
+        #operationsList {
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+        #operationsList div {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        #operationsList button {
+            background-color: #e74c3c;
+            padding: 5px 10px;
+            font-size: 14px;
+            float: right;
+        }
+        #operationsList button:hover {
+            background-color: #c0392b;
+        }
+    </style>
+</head>
+<body>
+    <h1>草帽模型财务规划工具</h1>
+    <div class="container">
+        <div class="row">
+          <div class="col-md-6">
+            <h2>初始参数</h2>
+            <form id="strawhatForm">
+              <input type="number" id="principal" placeholder="初始资金" required>
+              <input type="number" id="annual_rate" placeholder="年化收益率 (%)" required>
+              <input type="number" id="inflation_rate" placeholder="通货膨胀率 (%)" required>
+              <input type="number" id="monthly_income" placeholder="月收入" required>
+              <input type="number" id="monthly_expense" placeholder="月支出" required>
+              <input type="number" id="months" placeholder="模拟月数" required>
+            </form>
+          </div>
+          <div class="col-md-6">
+            <h2>额外操作</h2>
+            <div id="additionalOperations">
+              <select id="operationType">
+                <option value="">选择操作类型</option>
+                <option value="salary">工资变化</option>
+                <option value="expense">支出变化</option>
+                <option value="oneTime">一次性支出</option>
+              </select>
+              <div id="operationInputs" style="display: none;">
+                <input type="number" id="changeMonth" placeholder="月份">
+                <input type="number" id="changeAmount" placeholder="金额变化">
+                <button onclick="addOperation()">添加操作</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-12">
+            <button type="submit" form="strawhatForm">计算</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-12">
+            <div id="result"></div>
+            <canvas id="chart"></canvas>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-12">
+            <div id="operationsList"></div>
+          </div>
+        </div>
+    </div>
+
+    <div>
+        <input type="checkbox" id="showBalance" checked>
+        <label for="showBalance">显示资金余额</label>
+        <input type="checkbox" id="showIncome" checked>
+        <label for="showIncome">显示月收入</label>
+        <input type="checkbox" id="showExpenses" checked>
+        <label for="showExpenses">显示月支出</label>
+    </div>
+
+    <script>
+        let myChart = null;
+        let showBalance = true;
+        let showIncome = true;
+        let showExpenses = true;
+        let operations = [];
+    
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('showBalance').addEventListener('change', function() {
+                showBalance = this.checked;
+                updateChart();
+            });
+    
+            document.getElementById('showIncome').addEventListener('change', function() {
+                showIncome = this.checked;
+                updateChart();
+            });
+    
+            document.getElementById('showExpenses').addEventListener('change', function() {
+                showExpenses = this.checked;
+                updateChart();
+            });
+    
+            document.getElementById('operationType').addEventListener('change', function() {
+                const inputs = document.getElementById('operationInputs');
+                const amountInput = document.getElementById('changeAmount');
+                if (this.value) {
+                    inputs.style.display = 'block';
+                    if (this.value === 'oneTime') {
+                        amountInput.placeholder = '金额';
+                    } else {
+                        amountInput.placeholder = '金额变化';
+                    }
+                } else {
+                    inputs.style.display = 'none';
+                }
+            });
+    
+            document.querySelector('button[type="submit"]').addEventListener('click', function(e) {
+                e.preventDefault();
+                submitForm();
+            });
+        });
+    
+        function updateChart() {
+            if (!myChart) return;
+    
+            myChart.data.datasets.forEach((dataset, index) => {
+                switch(index) {
+                    case 0:
+                        dataset.hidden = !showBalance;
+                        break;
+                    case 1:
+                        dataset.hidden = !showIncome;
+                        break;
+                    case 2:
+                        dataset.hidden = !showExpenses;
+                        break;
+                }
+            });
+            myChart.update();
+        }
+    
+        function addOperation() {
+            const type = document.getElementById('operationType').value;
+            const month = parseInt(document.getElementById('changeMonth').value);
+            const amount = parseFloat(document.getElementById('changeAmount').value);
+
+            if (!type || isNaN(month) || isNaN(amount) || month < 1) {
+                alert('请填写所有字段，月份必须大于等于1');
+                return;
+            }
+
+            let operationText;
+            if (type === 'salary') {
+                operationText = `工资变化：从第 ${month} 月起，每月 ${amount > 0 ? '+' : ''}${amount}`;
+            } else if (type === 'expense') {
+                operationText = `支出变化：从第 ${month} 月起，每月 ${amount > 0 ? '+' : ''}${amount}`;
+            } else if (type === 'oneTime') {
+                operationText = `一次性支出：第 ${month} 月，${amount}`;
+            }
+
+            const operation = { type, month, amount };
+            operations.push(operation);
+            updateOperationsList();
+            clearInputs();
+        }
+    
+        function updateOperationsList() {
+            const list = document.getElementById('operationsList');
+            list.innerHTML = '<h4>已添加的操作：</h4>';
+            operations.forEach((op, index) => {
+                let operationText;
+                if (op.type === 'salary') {
+                    operationText = `工资变化：从第 ${op.month} 月起，每月 ${op.amount > 0 ? '+' : ''}${op.amount}`;
+                } else if (op.type === 'expense') {
+                    operationText = `支出变化：从第 ${op.month} 月起，每月 ${op.amount > 0 ? '+' : ''}${op.amount}`;
+                } else if (op.type === 'oneTime') {
+                    operationText = `一次性支出：第 ${op.month} 月，${op.amount}`;
+                }
+                list.innerHTML += `
+                    <div>
+                        ${operationText}
+                        <button onclick="removeOperation(${index})">删除</button>
+                    </div>
+                `;
+            });
+        }
+    
+        function removeOperation(index) {
+            operations.splice(index, 1);
+            updateOperationsList();
+        }
+    
+        function clearInputs() {
+            document.getElementById('operationType').value = '';
+            document.getElementById('changeMonth').value = '';
+            document.getElementById('changeAmount').value = '';
+            document.getElementById('operationInputs').style.display = 'none';
+        }
+    
+        function submitForm() {
+            const formData = {
+                principal: document.getElementById('principal').value,
+                annual_rate: document.getElementById('annual_rate').value,
+                inflation_rate: document.getElementById('inflation_rate').value,
+                monthly_income: document.getElementById('monthly_income').value,
+                monthly_expense: document.getElementById('monthly_expense').value,
+                months: document.getElementById('months').value,
+                operations: operations
+            };
+    
+            fetch('/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData),
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('result').innerText = data.result;
+                
+                if (myChart) {
+                    myChart.destroy();
+                }
+                
+                myChart = new Chart(document.getElementById('chart'), {
+                    type: 'line',
+                    data: {
+                        labels: Array.from({length: data.balances.length}, (_, i) => i),
+                        datasets: [
+                            {
+                                label: '资金余额',
+                                data: data.balances,
+                                borderColor: 'blue',
+                                fill: false
+                            },
+                            {
+                                label: '月收入',
+                                data: data.incomes,
+                                borderColor: 'red',
+                                fill: false
+                            },
+                            {
+                                label: '月支出',
+                                data: data.expenses,
+                                borderColor: 'green',
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        title: {
+                            display: true,
+                            text: '财务变化曲线'
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: '月数'
+                                }
+                            },
+                            y: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: '金额'
+                                }
+                            }
+                        },
+                        plugins: {
+                            annotation: data.depleted ? {
+                                annotations: [{
+                                    type: 'line',
+                                    mode: 'vertical',
+                                    scaleID: 'x',
+                                    value: data.depleted_month,
+                                    borderColor: 'red',
+                                    borderWidth: 2,
+                                    label: {
+                                        content: '资金耗尽',
+                                        enabled: true,
+                                        position: 'top'
+                                    }
+                                }]
+                            } : {}
+                        }
+                    }
+                });
+    
+                updateChart();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = '计算出错，请检查输入并重试。';
+            });
+        }
+    </script>
+</body>
+</html>
